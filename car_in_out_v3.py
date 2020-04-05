@@ -78,7 +78,8 @@ def taskFunction(self, id, adjDirection, datalist):
     floor_id = 1
     carport_status = copy.deepcopy(datalist[1])  #4个车位状态
     car_information = [[]] * len(carport_status) #4个车信息
-    seek_id = copy.deepcopy(datalist[-1])
+    seek_id = copy.deepcopy(datalist[-1]) ## 获取节点类型，出口，入口，中间节点
+    # seek_id = SimulationInterface.getNodeType(id)  # 从数据库获取节点的类型
     exchangedata_origin = copy.deepcopy(self.adjData) #存储邻居传来的数据信息
     #flag = [1] * len(self.adjData)  # 设定flag为全是0的数组
     #calcu_flag = 0 #计算标识位
@@ -152,7 +153,7 @@ def taskFunction(self, id, adjDirection, datalist):
                             for j in range(len(son_i)):
                                 self.sendDataToDirection(adjDirection[son_i[j]], car_info)
                         
-    elif seek_id == -1:
+    elif seek_id == -1:  # 出口
         # 随机找一辆入库的车，待该车停车后，10秒后开始出库
         out_car_info = None
         time_out = 0
@@ -188,7 +189,8 @@ def taskFunction(self, id, adjDirection, datalist):
                 end_datetime = datetime.datetime.now()
                 car_info[2] = end_datetime.strftime(r"%y-%m-%d %H:%M:%S")
                 delta_time = end_datetime - start_datetime
-                parking_fee = get_price(start_datetime, end_datetime, car_info[0])
+                parking_fee = get_price(start_datetime, end_datetime, car_info[0])  # 计算停车费
+                SimulationInterface.saveCarFee(floor_id, parking_fee)  # 保存停车费到数据库
     else:
         # 这是车位控制节点，控制4个车位，接收到停车信息，直接传给子节点。
         car_info = None
@@ -218,7 +220,7 @@ def taskFunction(self, id, adjDirection, datalist):
         value={"car_info": car_info}
 	#value = [id, return_id, self.parentID, self.sonID]  #返回 [节点ID，货物所在节点ID，节点的父节点，节点的子节点]
 
-    writeData.append([room_id + (floor_id - 1) * 16, 6, room_id + (floor_id - 1) * 16 - 1, '002010022', 0, 0, 1, parking_fee])
+    # writeData.append([room_id + (floor_id - 1) * 16, 6, room_id + (floor_id - 1) * 16 - 1, '002010022', 0, 0, 1, parking_fee])
     # 数据库写操作
-    SimulationInterface.controlModel(writeData)
+    # SimulationInterface.controlModel(writeData)
     return value

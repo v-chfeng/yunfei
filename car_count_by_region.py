@@ -1,6 +1,7 @@
 import copy
 import time
 import json
+import SimulationInterface
 
 id_str = 'id'
 total_count_str = 'total_count'
@@ -91,12 +92,12 @@ def spanningTree(self, id, adjDirection, root_node, cpn_num):
 
 def count_region(self, id, adjDirection, datalist, parentdirection, childdirection):
     adjid = copy.deepcopy(datalist[0])  #邻居节点ID
-    information = copy.deepcopy(datalist[1]) #4个车位状态
-    # information = SimulationInterface.getCarStatus(1, id) # 获取节点下的车辆信息
-    car_type = copy.deepcopy(datalist[2])
-    # car_type = SimulationInterface.getAreaType(id)  # 从数据库获取节点区域类型：A, B, C, D
-    seek_id = copy.deepcopy(datalist[-1])
-    # seek_id = SimulationInterface.getNodeType(id)  # 从数据库获取节点类型： 出入口，其他
+    # information = copy.deepcopy(datalist[1]) #4个车位状态
+    information = SimulationInterface.getCarStatus(1, id) # 获取节点下的车辆信息
+    # car_type = copy.deepcopy(datalist[2])
+    car_type = SimulationInterface.getAreaType(id)  # 从数据库获取节点区域类型：A, B, C, D
+    # seek_id = copy.deepcopy(datalist[-1])
+    seek_id = SimulationInterface.getNodeType(id)  # 从数据库获取节点类型： 出入口，其他
     exchangedata_origin = copy.deepcopy(self.adjData) 
     calcu_flag = 0 
     return_id = -1  
@@ -104,6 +105,8 @@ def count_region(self, id, adjDirection, datalist, parentdirection, childdirecti
     self.sendUDP(str(id) + "号节点就绪")
     data = None
     data_dict = None
+    parent_i = None
+    empty_car_num = len(list(filter(lambda x: x == 0, information))) # 统计状态为0的车位
     
     if parentdirection and parentdirection[0] == 0:  
         parent_flag = 1
@@ -133,7 +136,7 @@ def count_region(self, id, adjDirection, datalist, parentdirection, childdirecti
         if time_out < 50 :
             adj_result_sum = 0
             car_type_count = dict()
-            car_type_count[car_type] = len(information)
+            car_type_count[car_type] = empty_car_num
             for i in range(len(son_i)):
                 son_adj = son_i[i] - 1
                 adj_result_sum += self.adjData[son_adj][1]
@@ -146,15 +149,16 @@ def count_region(self, id, adjDirection, datalist, parentdirection, childdirecti
                         car_type_count[key] += value
                     else:
                         car_type_count[key] = value
-            # data_dict=[id, len(information)+adj_result_sum, car_type_count]
-            data_dict=[id, "total car count: " + str(len(information)+adj_result_sum), car_type+" region car count:" + str(car_type_count[car_type])]
+            # data_dict=[id, empty_car_num+adj_result_sum, car_type_count]
+            data_dict=[id, "total car count: " + str(empty_car_num+adj_result_sum), car_type+" region car count:" + str(car_type_count[car_type])]
+            SimulationInterface.saveRegionCount(1, car_type, car_type_count[car_type])
             self.sendUDP("************************通过")
         else:
             self.sendUDP(str(id) + "************************超时")
     elif son_flag == 1: # 末尾节点
         car_type_count = dict()
-        car_type_count[car_type] = len(information)
-        data_dict = [id, len(information), car_type_count]
+        car_type_count[car_type] = empty_car_num
+        data_dict = [id, empty_car_num, car_type_count]
         self.sendUDP(str(id) + "parent" + str(parent_i) + "testeteest" + json.dumps(data_dict))
         self.sendDataToDirection(adjDirection[parent_i-1], (data_dict))
     else:
@@ -170,7 +174,7 @@ def count_region(self, id, adjDirection, datalist, parentdirection, childdirecti
         if time_out < 50:
             adj_result_sum = 0
             car_type_count = dict()
-            car_type_count[car_type] = len(information)
+            car_type_count[car_type] = empty_car_num
 
             for j in range(len(son_i)):
                 i = son_i[j] - 1
@@ -185,7 +189,7 @@ def count_region(self, id, adjDirection, datalist, parentdirection, childdirecti
                             car_type_count[key] += value
                         else:
                             car_type_count[key] = value
-            data_dict=[id, len(information)+adj_result_sum, car_type_count]
+            data_dict=[id, empty_car_num+adj_result_sum, car_type_count]
             self.sendDataToDirection(adjDirection[parent_i -1], (data_dict))
         else:
             self.sendUDP(str(id) + "************************超时")
@@ -196,7 +200,7 @@ def count_region(self, id, adjDirection, datalist, parentdirection, childdirecti
 
 def taskFunction(self, id, adjDirection, datalist):
     root_node = 3
-    cpn_num = 10 # 我们的拓扑是10个节点
+    cpn_num = 16 # 我们的拓扑是10个节点
     tree_value = spanningTree(self, id, adjDirection, root_node, cpn_num)
 
     value = count_region(self, id, adjDirection, datalist, tree_value[0], tree_value[1])

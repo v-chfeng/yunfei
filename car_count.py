@@ -9,12 +9,12 @@ car_type_dict_str = 'car_type_dict'
 
 def taskFunction(self, id, adjDirection, datalist):
     adjid = copy.deepcopy(datalist[0])  #邻居节点ID
-    information = copy.deepcopy(datalist[1]) #4个车信息
-    # information = SimulationInterface.getCarStatus(1, id) # 获取节点下的车辆信息
-    car_type = copy.deepcopy(datalist[2])  # 节点区域类型
-    # car_type = SimulationInterface.getAreaType(id)  # 从数据库获取节点区域类型：A, B, C, D
-    seek_id = copy.deepcopy(datalist[-1])  # 节点类型
-    # seek_id = SimulationInterface.getNodeType(id)  # 从数据库获取节点类型： 出入口，其他
+    # information = copy.deepcopy(datalist[1]) #4个车信息
+    information = SimulationInterface.getCarStatus(1, id) # 获取节点下的车辆信息
+    # car_type = copy.deepcopy(datalist[2])  # 节点区域类型
+    car_type = SimulationInterface.getAreaType(id)  # 从数据库获取节点区域类型：A, B, C, D
+    # seek_id = copy.deepcopy(datalist[-1])  # 节点类型
+    seek_id = SimulationInterface.getNodeType(id)  # 从数据库获取节点类型： 出入口，其他
     exchangedata_origin = copy.deepcopy(self.adjData) 
     flag = [1] * len(self.adjData)  
     calcu_flag = 0 
@@ -23,20 +23,28 @@ def taskFunction(self, id, adjDirection, datalist):
     self.sendUDP(str(id) + "号节点就绪")
     data = None
     data_dict = None
-    
+    parent_i = None
+    empty_car_num = len(list(filter(lambda x: x == 0, information))) # 统计状态为0的车位
+
     if self.parentID == id:  
-        parent_flag = 1   
+        parent_flag = 1
     else:
         parent_flag = 0  
         for i in range(len(adjDirection)):  
             if self.parentID == adjid[i]:  
-                parent_i = i               
+                parent_i = i
+    adjid_str = list(map(lambda x: str(x), adjid))
+    self.sendUDP(str(id) + "号节点的父节点:" + str(self.parentID))
+    self.sendUDP(str(id) + "号节点的邻居节点:" + ','.join(adjid_str))
+    if parent_i is None:
+        self.sendUDP(str(id) + "号节点的父节点Id为空:")
+
     if self.sonID: 
         son_flag = 0 
-        son_i = [0] * len(self.sonID)             
-        for i in range(len(self.sonID)):          
-            for j in range(len(adjDirection)):  
-                if self.sonID[i] == adjid[j]:   
+        son_i = [0] * len(self.sonID)
+        for i in range(len(self.sonID)):
+            for j in range(len(adjDirection)):
+                if self.sonID[i] == adjid[j]:
                     son_i[i] = j  
     else:
         son_flag = 1
@@ -53,7 +61,7 @@ def taskFunction(self, id, adjDirection, datalist):
         if time_out < 50 :
             adj_result_sum = 0
             car_type_count = dict()
-            car_type_count[car_type] = len(information) - sum(information)
+            car_type_count[car_type] = empty_car_num
             for i in range(len(self.adjData)):
                 if self.adjData[i][0] in self.sonID:
                     adj_result_sum += self.adjData[i][1]
@@ -66,14 +74,16 @@ def taskFunction(self, id, adjDirection, datalist):
                             car_type_count[key] += value
                         else:
                             car_type_count[key] = value
-            data_dict=[id, len(information) - sum(information)+adj_result_sum, car_type_count]
+            total_count = empty_car_num+adj_result_sum
+            data_dict=[id, empty_car_num+adj_result_sum, car_type_count]
+            SimulationInterface.saveTotalCount(1, total_count)
             self.sendUDP("************************通过")
         else:
             self.sendUDP("************************超时")
     elif son_flag == 1: # 末尾节点
         car_type_count = dict()
-        car_type_count[car_type] = len(information) - sum(information)
-        data_dict = [id, len(information) - sum(information), car_type_count]
+        car_type_count[car_type] = empty_car_num
+        data_dict = [id, empty_car_num, car_type_count]
         self.sendUDP(str(id) + "testeteest" + json.dumps(data_dict))
         self.sendDataToDirection(adjDirection[parent_i], (data_dict))
     else:
@@ -93,7 +103,7 @@ def taskFunction(self, id, adjDirection, datalist):
         if time_out < 50:
             adj_result_sum = 0
             car_type_count = dict()
-            car_type_count[car_type] = len(information) - sum(information)
+            car_type_count[car_type] = empty_car_num
 
             for i in range(len(self.adjData)):
             
@@ -108,7 +118,7 @@ def taskFunction(self, id, adjDirection, datalist):
                             car_type_count[key] += value
                         else:
                             car_type_count[key] = value
-            data_dict=[id, len(information) - sum(information)+adj_result_sum, car_type_count]
+            data_dict=[id, empty_car_num+adj_result_sum, car_type_count]
         self.sendDataToDirection(adjDirection[parent_i], (data_dict))
         # if son_flag==1: # 末尾节点
         # else: # 其他节点
@@ -129,7 +139,7 @@ def taskFunction(self, id, adjDirection, datalist):
         #     if time_out < 50:
         #         adj_result_sum = 0
         #         car_type_count = dict()
-        #         car_type_count[car_type] = len(information) - sum(information)
+        #         car_type_count[car_type] = empty_car_num
 
         #         for i in range(len(self.adjData)):
                 
@@ -148,10 +158,10 @@ def taskFunction(self, id, adjDirection, datalist):
                 
         #         data_dict = dict()
         #         data_dict[id_str] = id
-        #         data_dict[total_count_str] = len(information) - sum(information)+adj_result_sum
+        #         data_dict[total_count_str] = empty_car_num+adj_result_sum
         #         data_dict[car_type_dict_str] = car_type_count
         #         self.sendDataToDirection(adjDirection[parent_i], json.dumps(data_dict))
     self.sendUDP(str(id) + "号节点完成")
-    value=[json.dumps(data_dict), self.parentID, self.sonID]
-    
+    value=[json.dumps(data_dict), self.parentID, self.sonID, empty_car_num]
+
     return value

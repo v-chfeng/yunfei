@@ -32,7 +32,7 @@ def get_price(start_time, end_time, car_lic):
     # unit_price, unit = get_unit_price(UserType.vip, CarType.little, DayOrNight.day)#调用子函数计算停车计费的单价
     unit_price, unit = SimulationInterface.get_unit_price(UserType.vip.value -1, CarType.little.value-1, DayOrNight.day.value-1)#调用子函数计算停车计费的单价
     time_delta = end_time - start_time
-    return math.ceil(time_delta.total_seconds() / 60 / unit) * unit_price
+    return math.ceil(time_delta.total_seconds() / 3600 / unit) * unit_price
 
 def get_unit_price(user_type, car_type, day_or_night):
     """
@@ -117,6 +117,7 @@ def taskFunction(self, id, adjDirection, datalist):
     #初始化要输出的信息
     car_info = None
     parking_fee = None
+    car_dict = None
 
     # 这是入口的节点
     if seek_id == 1:
@@ -137,91 +138,13 @@ def taskFunction(self, id, adjDirection, datalist):
             # 保存车辆信息
             car_dict[car_lic] = car_info
 
-            for j in range(len(son_i)):
-                self.sendDataToDirection(adjDirection[son_i[j]], car_info)
+            SimulationInterface.save_input_car_license_number(car_lic, car_start)
         else:
             self.sendUDP(str(id)+ f"号：车库已满，车辆-{car_lic}不能进库!")
             return car_info
-
-            time_out = 0
-            while time_out < 60:   #当flag和有值 并且time_out<60
-                time.sleep(0.1)      #时间间隔为1
-                time_out += 1        #time_out =time_out+1
-                match = False
-                for i in range(len(self.adjData)):       #收到所有邻居节点信息
-                    if exchangedata_origin[i] != self.adjData[i]: 
-                        if not self.adjData[i][2] and self.adjData[i][0] in car_dict: # 如果开始时间为空，回传该车辆的开始时间
-                            for j in range(len(son_i)):
-                                self.sendDataToDirection(adjDirection[son_i[j]], car_info)
-                        
-    elif seek_id == -1:  # 出口
-        # 随机找一辆入库的车，待该车停车后，10秒后开始出库
-        out_car_info = None
-        time_out = 0
-        price_per_second = 2
-
-        while time_out < 60:
-            time.sleep(0.1)
-            time_out += 1
-            for i in range(len(self.adjData)):
-                if exchangedata_origin[i] == self.adjData[i]:  # 没有收到消息
-                    continue
-                car_info = copy.deepcopy(self.adjData[i])
-                break
-
-        if car_info:
-            time.sleep(10)   # 车辆停的时间
-            time_out = 0
-            out_car_info = car_info
-            out_car_info[2] = None
-            self.sendDataToDirection(adjDirection[parent_i], out_car_info)
-            while time_out < 60:
-                time.sleep(0.1)
-                time_out += 1
-                for i in range(len(self.adjData)):
-                    if exchangedata_origin[i] == self.adjData[i] or self.adjData[i][0] != out_car_info[0]:  # 没有收到消息
-                        continue
-                    in_car_info = copy.deepcopy(self.adjData[i])
-                    break
-            
-            if in_car_info: # 收到进车节点发来的消息
-                # 计算停车费信息
-                start_datetime = datetime.datetime.strptime(in_car_info[1], r"%y-%m-%d %H:%M:%S")
-                end_datetime = datetime.datetime.now()
-                car_info[2] = end_datetime.strftime(r"%y-%m-%d %H:%M:%S")
-                delta_time = end_datetime - start_datetime
-                parking_fee = get_price(start_datetime, end_datetime, car_info[0])  # 计算停车费
-                SimulationInterface.saveCarFee(floor_id, parking_fee)  # 保存停车费到数据库
     else:
-        # 这是车位控制节点，控制4个车位，接收到停车信息，直接传给子节点。
-        car_info = None
-        time_out = 0    #赋值
-        default_carport_status = [0] * len(carport_status) # 假定这是上一个车位状态
-        while time_out < 60:
-            # 入库
-            time.sleep(0.1)      #时间间隔为1
-            time_out += 1      #time_out =time_out+1
-            for i in range(len(self.adjData)):
-                if exchangedata_origin[i] == self.adjData[i]:  # 没有收到消息
-                    continue
-                if self.adjData[i][2]: # 如果出库节点请求开始时间
-                    self.sendUDP(str(id) + "号请求开始时间")
-                    self.sendDataToDirection(adjDirection[parent_i], copy.deepcopy(self.adjData[i]))  # 传给上级节点
-                    continue
-                
-                # 将该停车信息也传给子节点，通知所有节点，有车进库
-                for j in range(len(son_i)):
-                    self.sendDataToDirection(adjDirection[son_i[j]], copy.deepcopy(self.adjData[i]))
+        self.sendUDP(str(id) + "无需操作")
 
     self.sendUDP(str(id) + "号节点完成")
-
-    if parking_fee:
-        value={"car_info": car_info, "parking_fee": parking_fee}
-    else:
-        value={"car_info": car_info}
-	#value = [id, return_id, self.parentID, self.sonID]  #返回 [节点ID，货物所在节点ID，节点的父节点，节点的子节点]
-
-    # writeData.append([room_id + (floor_id - 1) * 16, 6, room_id + (floor_id - 1) * 16 - 1, '002010022', 0, 0, 1, parking_fee])
-    # 数据库写操作
-    # SimulationInterface.controlModel(writeData)
+    value = car_dict
     return value

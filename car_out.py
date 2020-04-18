@@ -120,78 +120,66 @@ def taskFunction(self, id, adjDirection, datalist):
 
     # 这是入口的节点
     if seek_id == 1:
-        i = 0
-        current_car_count = 2  # 应该是通过另一个task获取
-        total_car_count = 5    # 应该是通过另一个task获取
-        car_info=[0,0,0] #[车牌信息，进入时间，离开时间]
-        # car_lic= f"#{i}#" + str(int(random.random() * pow(10, 8)))  # 获取车牌信息
+        time_out = 0
+        while time_out < 60:   #当flag和有值 并且time_out<60
+            time.sleep(0.1)      #时间间隔为1
+            time_out += 1        #time_out =time_out+1
+            match = False
+            for i in range(len(self.adjData)):       #收到所有邻居节点信息
+                if exchangedata_origin[i] != self.adjData[i]: 
+                    if not self.adjData[i][1]: # 如果开始时间为空，回传该车辆的开始时间
+                        car_license = self.adjData[i][0]
+                        if not car_license:  # 如果没有车牌号，则跳过
+                            continue
 
-        car_start = datetime.datetime.strftime(datetime.datetime.now(),r"%y-%m-%d %H:%M:%S")
-        car_info[0]=car_lic
-        car_info[1]=car_start
-        car_dict = {}
-    
-        if current_car_count < total_car_count:
-            # current_car_count:现在车库中车的数量
-            # total_car_count： 车库中车的总数量
-            # 保存车辆信息
-            car_dict[car_lic] = car_info
+                        start_datetime = SimulationInterface.get_input_datetime(car_license)  # 获取该车牌号的入库时间
+                        car_info = [0, 0, 0]
+                        car_info[0]= car_license
+                        car_info[1] = datetime.datetime.strftime(start_datetime,r"%y-%m-%d %H:%M:%S")
+                        for j in range(len(son_i)):
+                            self.sendDataToDirection(adjDirection[son_i[j]], car_info)
 
-            for j in range(len(son_i)):
-                self.sendDataToDirection(adjDirection[son_i[j]], car_info)
-        else:
-            self.sendUDP(str(id)+ f"号：车库已满，车辆-{car_lic}不能进库!")
-            return car_info
+                        match = True
 
-            time_out = 0
-            while time_out < 60:   #当flag和有值 并且time_out<60
-                time.sleep(0.1)      #时间间隔为1
-                time_out += 1        #time_out =time_out+1
-                match = False
-                for i in range(len(self.adjData)):       #收到所有邻居节点信息
-                    if exchangedata_origin[i] != self.adjData[i]: 
-                        if not self.adjData[i][2] and self.adjData[i][0] in car_dict: # 如果开始时间为空，回传该车辆的开始时间
-                            for j in range(len(son_i)):
-                                self.sendDataToDirection(adjDirection[son_i[j]], car_info)
+            if match:
+                break
                         
     elif seek_id == -1:  # 出口
         # 随机找一辆入库的车，待该车停车后，10秒后开始出库
         out_car_info = None
-        time_out = 0
-        price_per_second = 2
 
-        while time_out < 60:
-            time.sleep(0.1)
-            time_out += 1
-            for i in range(len(self.adjData)):
-                if exchangedata_origin[i] == self.adjData[i]:  # 没有收到消息
-                    continue
-                car_info = copy.deepcopy(self.adjData[i])
-                break
+        car_license = SimulationInterface.get_random_car_license()
+        self.sendUDP('出口的车牌号'+str(car_license))
 
-        if car_info:
-            time.sleep(10)   # 车辆停的时间
+        if car_license:  # 若车牌号存在，则退出
+            # time.sleep(10)   # 车辆停的时间
             time_out = 0
-            out_car_info = car_info
-            out_car_info[2] = None
+            out_car_info = [0, 0, 0]
+            out_car_info[0] = car_license
+            out_car_info[2] = "out"
             self.sendDataToDirection(adjDirection[parent_i], out_car_info)
             while time_out < 60:
                 time.sleep(0.1)
                 time_out += 1
                 for i in range(len(self.adjData)):
-                    if exchangedata_origin[i] == self.adjData[i] or self.adjData[i][0] != out_car_info[0]:  # 没有收到消息
+                    if exchangedata_origin[i] == self.adjData[i] or self.adjData[i][0] != out_car_info[0] \
+                        or not self.adjData[i][1]:  # 没有收到入口节点发来的消息
                         continue
                     in_car_info = copy.deepcopy(self.adjData[i])
                     break
             
             if in_car_info: # 收到进车节点发来的消息
                 # 计算停车费信息
+                self.sendUDP('入口发来信息：1:' + str(in_car_info[0]) + "2:" + str(in_car_info[1]))
                 start_datetime = datetime.datetime.strptime(in_car_info[1], r"%y-%m-%d %H:%M:%S")
                 end_datetime = datetime.datetime.now()
-                car_info[2] = end_datetime.strftime(r"%y-%m-%d %H:%M:%S")
+                end_datetime_str = datetime.datetime.strftime(end_datetime, r"%y-%m-%d %H:%M:%S")
+                in_car_info[2] = end_datetime.strftime(r"%y-%m-%d %H:%M:%S")
                 delta_time = end_datetime - start_datetime
-                parking_fee = get_price(start_datetime, end_datetime, car_info[0])  # 计算停车费
+                parking_fee = get_price(start_datetime, end_datetime, in_car_info[0])  # 计算停车费
                 SimulationInterface.saveCarFee(floor_id, parking_fee)  # 保存停车费到数据库
+                SimulationInterface.save_out_time_and_parking_fee(car_license, end_datetime_str, parking_fee)
+                car_info = in_car_info
     else:
         # 这是车位控制节点，控制4个车位，接收到停车信息，直接传给子节点。
         car_info = None
